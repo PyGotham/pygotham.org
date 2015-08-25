@@ -1,0 +1,92 @@
+---
+- name: Deploy servers
+  hosts: localhost
+  gather_facts: no
+
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+
+  tasks:
+    - name: Ensure database servers
+      rax:
+        wait: yes
+        name: "{{ database.name }}"
+        auto_increment: no
+        image: "{{ database.image }}"
+        flavor: "{{ database.flavor }}"
+        region: "{{ database.region|default('IAD') }}"
+        group: "{{ database.group|default('database') }}"
+        key_name: dirn-macbook
+        # meta:
+        count: "{{ database.count|default(1) }}"
+        exact_count: yes
+      register: database_servers
+
+    - name: Register new database hosts
+      add_host:
+        hostname: "{{ item.name }}"
+        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
+        ansible_ssh_user: root
+        group_name: "{{ database.group|default('database') }}"
+      with_items: database_servers.success
+      when: database_servers.action == 'create'
+
+    - name: Ensure web servers
+      rax:
+        wait: yes
+        name: "{{ web.name }}"
+        auto_increment: no
+        image: "{{ web.image }}"
+        flavor: "{{ web.flavor }}"
+        region: "{{ web.region|default('IAD') }}"
+        group: "{{ web.group|default('web') }}"
+        key_name: dirn-macbook
+        count: "{{ web.count|default(1) }}"
+        exact_count: yes
+      register: web_servers
+
+    - name: Register new web hosts
+      add_host:
+        hostname: "{{ item.name }}"
+        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
+        ansible_ssh_user: root
+        group_name: "{{ web.group|default('web') }}"
+      with_items: web_servers.success
+      when: web_servers.action == 'create'
+
+- name: Configure access
+  hosts: "{{ env }}"
+  remote_user: root
+  gather_facts: no
+
+  tasks:
+    - name: Ensure SSH keys
+      authorized_key:
+        user: root
+        key: https://github.com/{{ item }}.keys
+      with_items:
+        - dirn
+        - jonafato
+
+- name: Configure database servers
+  hosts: "{{ database.group|default('database') }}"
+  remote_user: root
+
+  vars_files:
+    - environments/{{ env }}/group_vars/db.yml
+    - environments/{{ env }}/group_vars/rax.yml
+
+  roles:
+    - role: ANXS.postgresql
+      postgresql_databases:
+        - name: "{{ db_name }}"
+          hstore: yes
+      postgresql_users:
+        - name: "{{ db_user }}"
+          pass: "{{ db_pass }}"
+          encrypted: no
+      postgresql_user_privileges:
+        - name: "{{ db_user }}"
+          db: "{{ db_name }}"
+          priv: ALL
+          role_attr_flags: NOSUPERUSER,NOCREATEDB
