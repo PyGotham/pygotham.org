@@ -11,15 +11,15 @@
       rax:
         wait: yes
         name: "{{ database.name }}"
-        auto_increment: no
+        auto_increment: yes
         image: "{{ database.image }}"
         flavor: "{{ database.flavor }}"
         region: "{{ database.region|default('IAD') }}"
         group: "{{ database.group|default('database') }}"
         key_name: dirn-macbook
-        # meta:
         count: "{{ database.count|default(1) }}"
         exact_count: yes
+        wait: yes
       register: database_servers
 
     - name: Register new database hosts
@@ -35,7 +35,7 @@
       rax:
         wait: yes
         name: "{{ web.name }}"
-        auto_increment: no
+        auto_increment: yes
         image: "{{ web.image }}"
         flavor: "{{ web.flavor }}"
         region: "{{ web.region|default('IAD') }}"
@@ -43,6 +43,7 @@
         key_name: dirn-macbook
         count: "{{ web.count|default(1) }}"
         exact_count: yes
+        wait: yes
       register: web_servers
 
     - name: Register new web hosts
