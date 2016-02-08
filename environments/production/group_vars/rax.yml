@@ -1,12 +1,13 @@
 ---
-environment: prod
-
 database:
   flavor: io1-15
   image: Ubuntu 14.04 LTS (Trusty Tahr) (PVHVM)
+  key: coreos-key
   name: database-
 
 web:
-  flavor: general1-4
-  image: Ubuntu 14.04 LTS (Trusty Tahr) (PV)
-  name: web-
+  flavor: performance1-2
+  # CoreOS
+  image: 8198f6de-db3f-4f48-9f0e-74a2c7749895
+  key: coreos-key
+  name: core-

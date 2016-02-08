@@ -151,10 +151,9 @@ import sys
 import argparse
 import warnings
 import collections
-try:
-    import configparser as ConfigParser
-except ImportError:
-    import ConfigParser
+import ConfigParser
+
+from six import iteritems
 
 from ansible.constants import get_config, mk_boolean
 
@@ -248,7 +247,7 @@ def _list_into_cache(regions):
         if cs is None:
             warnings.warn(
                 'Connecting to Rackspace region "%s" has caused Pyrax to '
-                'return a NoneType. Is this a valid region?' % region,
+                'return None. Is this a valid region?' % region,
                 RuntimeWarning)
             continue
         for server in cs.servers.list():
@@ -270,7 +269,7 @@ def _list_into_cache(regions):
 
             hostvars[server.name]['rax_region'] = region
 
-            for key, value in server.metadata.iteritems():
+            for key, value in iteritems(server.metadata):
                 groups['%s_%s_%s' % (prefix, key, value)].append(server.name)
 
             groups['instance-%s' % server.id].append(server.name)
@@ -356,9 +355,12 @@ def get_cache_file_path(regions):
 
 
 def _list(regions, refresh_cache=True):
+    cache_max_age = int(get_config(p, 'rax', 'cache_max_age',
+                                   'RAX_CACHE_MAX_AGE', 600))
+
     if (not os.path.exists(get_cache_file_path(regions)) or
         refresh_cache or
-        (time() - os.stat(get_cache_file_path(regions))[-1]) > 600):
+        (time() - os.stat(get_cache_file_path(regions))[-1]) > cache_max_age):
         # Cache file doesn't exist or older than 10m or refresh cache requested
         _list_into_cache(regions)
 

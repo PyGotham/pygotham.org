@@ -10,23 +10,24 @@
     - name: Ensure database servers
       rax:
         wait: yes
+
         name: "{{ database.name }}"
+        group: "{{ database.group|default('database') }}"
         auto_increment: yes
+        count: "{{ database.count|default(1) }}"
+        exact_count: yes
+
         image: "{{ database.image }}"
         flavor: "{{ database.flavor }}"
         region: "{{ database.region|default('IAD') }}"
-        group: "{{ database.group|default('database') }}"
-        key_name: dirn-macbook
-        count: "{{ database.count|default(1) }}"
-        exact_count: yes
-        wait: yes
+
+        key_name: "{{ database.key }}"
       register: database_servers
 
     - name: Register new database hosts
       add_host:
         hostname: "{{ item.name }}"
-        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
-        ansible_ssh_user: root
+        ansible_host: "{{ item.rax_accessipv4 }}"
         group_name: "{{ database.group|default('database') }}"
       with_items: database_servers.success
       when: database_servers.action == 'create'
@@ -34,60 +35,74 @@
     - name: Ensure web servers
       rax:
         wait: yes
+
         name: "{{ web.name }}"
+        group: "{{ web.group|default('web') }}"
         auto_increment: yes
+        count: "{{ web.count|default(1) }}"
+        exact_count: yes
+
         image: "{{ web.image }}"
         flavor: "{{ web.flavor }}"
         region: "{{ web.region|default('IAD') }}"
-        group: "{{ web.group|default('web') }}"
-        key_name: dirn-macbook
-        count: "{{ web.count|default(1) }}"
-        exact_count: yes
-        wait: yes
+
+        key_name: "{{ web.key }}"
       register: web_servers
 
     - name: Register new web hosts
       add_host:
         hostname: "{{ item.name }}"
-        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
-        ansible_ssh_user: root
+        ansible_host: "{{ item.rax_accessipv4 }}"
         group_name: "{{ web.group|default('web') }}"
       with_items: web_servers.success
       when: web_servers.action == 'create'
 
+- name: Wait for hosts
+  hosts: "{{ env }}"
+  gather_facts: yes
+
+  tasks:
+    - name: Wait for hosts
+      wait_for:
+        delay: 10
+        host: "{{ ansible_ssh_host|default(inventory_hostname) }}"
+        port: 22
+        search_regex: OpenSSH
+
+- name: Trust hosts
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Fetch host keys
+      command: ssh-keyscan {{ hostvars[item].ansible_ssh_host }}
+      register: host_ssh_keys
+      with_items: groups[env]
+      changed_when: false
+
+    - name: Add host keys
+      lineinfile:
+        dest: ~/.ssh/known_hosts
+        create: yes
+        state: present
+        line: "{{ item.stdout }}"
+      with_items: host_ssh_keys.results
+
+- name: Bootstrap hosts
+  hosts: web
+  gather_facts: false
+  roles:
+    - sigma.coreos-bootstrap
+
 - name: Configure access
   hosts: "{{ env }}"
-  remote_user: root
-  gather_facts: no
+  gather_facts: yes
 
   tasks:
     - name: Ensure SSH keys
       authorized_key:
-        user: root
+        user: "{{ ansible_ssh_user }}"
         key: https://github.com/{{ item }}.keys
       with_items:
         - dirn
         - jonafato
-
-- name: Configure database servers
-  hosts: "{{ database.group|default('database') }}"
-  remote_user: root
-
-  vars_files:
-    - environments/{{ env }}/group_vars/db.yml
-    - environments/{{ env }}/group_vars/rax.yml
-
-  roles:
-    - role: ANXS.postgresql
-      postgresql_databases:
-        - name: "{{ db_name }}"
-          hstore: yes
-      postgresql_users:
-        - name: "{{ db_user }}"
-          pass: "{{ db_pass }}"
-          encrypted: no
-      postgresql_user_privileges:
-        - name: "{{ db_user }}"
-          db: "{{ db_name }}"
-          priv: ALL
-          role_attr_flags: NOSUPERUSER,NOCREATEDB
