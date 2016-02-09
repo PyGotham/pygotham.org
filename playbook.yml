@@ -89,8 +89,12 @@
       with_items: host_ssh_keys.results
 
 - name: Bootstrap hosts
-  hosts: web
-  gather_facts: false
+  hosts: "{{ web.group|default('web') }}"
+  gather_facts: no
+
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+
   roles:
     - sigma.coreos-bootstrap
 
