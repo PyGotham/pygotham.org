@@ -7,67 +7,31 @@
     - environments/{{ env }}/group_vars/rax.yml
 
   tasks:
-    - name: Ensure database servers
+    - name: Ensure servers
       rax:
         wait: yes
+        wait_timeout: 600
 
-        name: "{{ database.name }}"
-        group: "{{ database.group|default('database') }}"
+        name: "{{ env }}-"
+        group: "{{ env }}"
         auto_increment: yes
-        count: "{{ database.count|default(1) }}"
+        count: "{{ server.count|default(1) }}"
         exact_count: yes
 
-        image: "{{ database.image }}"
-        flavor: "{{ database.flavor }}"
-        region: "{{ database.region|default('IAD') }}"
+        image: "{{ server.image }}"
+        flavor: "{{ server.flavor }}"
+        region: "{{ server.region|default('IAD') }}"
 
-        key_name: "{{ database.key }}"
-      register: database_servers
+        key_name: "{{ server.key }}"
+      register: servers
 
-    - name: Register new database hosts
+    - name: Register new hosts
       add_host:
         hostname: "{{ item.name }}"
         ansible_host: "{{ item.rax_accessipv4 }}"
-        group_name: "{{ database.group|default('database') }}"
-      with_items: database_servers.success
-      when: database_servers.action == 'create'
-
-    - name: Ensure web servers
-      rax:
-        wait: yes
-
-        name: "{{ web.name }}"
-        group: "{{ web.group|default('web') }}"
-        auto_increment: yes
-        count: "{{ web.count|default(1) }}"
-        exact_count: yes
-
-        image: "{{ web.image }}"
-        flavor: "{{ web.flavor }}"
-        region: "{{ web.region|default('IAD') }}"
-
-        key_name: "{{ web.key }}"
-      register: web_servers
-
-    - name: Register new web hosts
-      add_host:
-        hostname: "{{ item.name }}"
-        ansible_host: "{{ item.rax_accessipv4 }}"
-        group_name: "{{ web.group|default('web') }}"
-      with_items: web_servers.success
-      when: web_servers.action == 'create'
-
-- name: Wait for hosts
-  hosts: "{{ env }}"
-  gather_facts: yes
-
-  tasks:
-    - name: Wait for hosts
-      wait_for:
-        delay: 10
-        host: "{{ ansible_ssh_host|default(inventory_hostname) }}"
-        port: 22
-        search_regex: OpenSSH
+        groups: "{{ env }}"
+      with_items: servers.success
+      when: servers|changed
 
 - name: Trust hosts
   hosts: localhost
@@ -75,7 +39,7 @@
 
   tasks:
     - name: Fetch host keys
-      command: ssh-keyscan {{ hostvars[item].ansible_ssh_host }}
+      command: ssh-keyscan {{ hostvars[item].rax_accessipv4 }}
       register: host_ssh_keys
       with_items: groups[env]
       changed_when: false
@@ -89,7 +53,7 @@
       with_items: host_ssh_keys.results
 
 - name: Bootstrap hosts
-  hosts: "{{ web.group|default('web') }}"
+  hosts: "{{ env }}"
   gather_facts: no
 
   vars_files:

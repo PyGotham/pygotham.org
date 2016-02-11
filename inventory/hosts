@@ -5,15 +5,7 @@ localhost
 ansible_connection=local
 ansible_python_interpreter=python
 
-[database]
-[database:vars]
-ansible_ssh_user=root
-
-[web]
-[web:vars]
+[production]
+[production:vars]
 ansible_ssh_user=core
 ansible_python_interpreter="PATH=/home/core/bin:$PATH python"
-
-[production:children]
-database
-web
