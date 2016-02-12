@@ -131,3 +131,26 @@
 
         - command: fleetctl start ~/units/nginx.service
       when: nginx_unit|changed
+
+- name: Postgres
+  hosts: "{{ env }}"
+  gather_facts: no
+
+  tasks:
+    - name: Upload Postgres service unit
+      template:
+        src: templates/postgres.service.j2
+        dest: ~/units/postgres.service
+      register: postgres_unit
+
+    - block:
+        - command: fleetctl stop ~/units/postgres.service
+          ignore_errors: yes
+
+        - command: fleetctl destroy ~/units/postgres.service
+          ignore_errors: yes
+
+        - command: fleetctl submit ~/units/postgres.service
+
+        - command: fleetctl start ~/units/postgres.service
+      when: postgres_unit|changed
