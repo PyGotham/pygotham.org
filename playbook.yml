@@ -49,8 +49,10 @@
         dest: ~/.ssh/known_hosts
         create: yes
         state: present
-        line: "{{ item.stdout }}"
-      with_items: host_ssh_keys.results
+        line: "{{ item.1 }}"
+      with_subelements:
+        - host_ssh_keys.results
+        - stdout_lines
 
 - name: Bootstrap hosts
   hosts: "{{ env }}"
