@@ -62,6 +62,17 @@
   roles:
     - sigma.coreos-bootstrap
 
+  tasks:
+    - name: Install pip
+      command: ~/bin/python -m ensurepip
+      args:
+        creates: ~/pypy/site-packages/pip
+
+    - name: Install docker-py
+      pip:
+        name: docker-py
+        state: latest
+
 - name: Configure access
   hosts: "{{ env }}"
   gather_facts: yes
@@ -74,3 +85,30 @@
       with_items:
         - dirn
         - jonafato
+
+- name: Start services
+  hosts: "{{ env }}"
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Start etcd
+      service:
+        name: etcd.service
+        state: started
+
+- name: Nginx
+  hosts: "{{ env }}"
+  gather_facts: no
+
+  tasks:
+    - name: Download nginx
+      command: docker pull nginx
+
+    - name: Start nginx
+      docker:
+        docker_api_version: "1.20"
+        image: nginx
+        name: nginx
+        ports: "80:80"
+        state: running
