@@ -1,0 +1,25 @@
+[Unit]
+Description=Nginx
+After=docker.service
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+
+# Stop and remove the old container.
+ExecStartPre=-/usr/bin/docker kill nginx%i
+ExecStartPre=-/usr/bin/docker rm nginx%i
+
+# Download the image.
+ExecStartPre=/usr/bin/docker pull nginx
+
+# Start a container.
+ExecStart=/usr/bin/docker run \
+    --name nginx%i \
+    -p 80:80 \
+    -p 443:443 \
+    nginx
+
+# Stop and remove the cntainer.
+ExecStop=/usr/bin/docker stop nginx%i

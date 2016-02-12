@@ -113,44 +113,62 @@
   hosts: "{{ env }}"
   gather_facts: no
 
+  vars_files:
+    - environments/{{ env }}/group_vars/services.yml
+
   tasks:
     - name: Upload Nginx service unit
       template:
-        src: templates/nginx.service.j2
-        dest: ~/units/nginx.service
-      register: nginx_unit
+        src: templates/nginx@.service.j2
+        dest: ~/units/nginx@.service
+      register: unit
 
     - block:
-        - command: fleetctl stop ~/units/nginx.service
+        - name: Stop Nginx
+          command: fleetctl stop ~/units/nginx@{{ item }}.service
           ignore_errors: yes
+          with_sequence: count="{{ nginx.count|default(1) }}"
 
-        - command: fleetctl destroy ~/units/nginx.service
+        - name: Remove Nginx units
+          command: fleetctl destroy ~/units/nginx@{{ item }}.service
           ignore_errors: yes
+          with_sequence: count="{{ nginx.count|default(1) }}"
 
-        - command: fleetctl submit ~/units/nginx.service
+        - name: Register Nginx units
+          command: fleetctl submit ~/units/nginx@{{ item }}.service
+          with_sequence: count="{{ nginx.count|default(1) }}"
 
-        - command: fleetctl start ~/units/nginx.service
-      when: nginx_unit|changed
+        - name: Start Nginx
+          command: fleetctl start ~/units/nginx@{{ item }}.service
+          with_sequence: count="{{ nginx.count|default(1) }}"
+      when: unit|changed
 
 - name: Postgres
   hosts: "{{ env }}"
   gather_facts: no
 
+  vars_files:
+    - environments/{{ env }}/group_vars/services.yml
+
   tasks:
     - name: Upload Postgres service unit
       template:
-        src: templates/postgres.service.j2
-        dest: ~/units/postgres.service
-      register: postgres_unit
+        src: templates/postgres@.service.j2
+        dest: ~/units/postgres@.service
+      register: unit
 
     - block:
-        - command: fleetctl stop ~/units/postgres.service
+        - command: fleetctl stop ~/units/postgres@{{ item }}.service
           ignore_errors: yes
+          with_sequence: count="{{ postgres.count|default(1) }}"
 
-        - command: fleetctl destroy ~/units/postgres.service
+        - command: fleetctl destroy ~/units/postgres@{{ item }}.service
           ignore_errors: yes
+          with_sequence: count="{{ postgres.count|default(1) }}"
 
-        - command: fleetctl submit ~/units/postgres.service
+        - command: fleetctl submit ~/units/postgres@{{ item }}.service
+          with_sequence: count="{{ postgres.count|default(1) }}"
 
-        - command: fleetctl start ~/units/postgres.service
-      when: postgres_unit|changed
+        - command: fleetctl start ~/units/postgres@{{ item }}.service
+          with_sequence: count="{{ postgres.count|default(1) }}"
+      when: unit|changed

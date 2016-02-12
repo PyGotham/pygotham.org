@@ -1,0 +1,28 @@
+[Unit]
+Description=Postgres
+After=docker.service
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+
+# Make sure the data directory exists.
+ExecStartPre=~/data/postgres
+
+# Stop and remove the old container.
+ExecStartPre=-/usr/bin/docker kill postgres%i
+ExecStartPre=-/usr/bin/docker rm postgres%i
+
+# Download the image.
+ExecStartPre=/usr/bin/docker pull postgres:9.5
+
+# Start a container.
+ExecStart=/usr/bin/docker run \
+    --name postgres%i \
+    -e POSTGRES_USER=pygotham \
+    --volume ~/data/postgres:/var/lib/postgresql/data \
+    postgres:9.5
+
+# Stop and remove the cntainer.
+ExecStop=/usr/bin/docker stop postgres%i
