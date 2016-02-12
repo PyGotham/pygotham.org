@@ -91,26 +91,43 @@
 - name: Start services
   hosts: "{{ env }}"
   gather_facts: no
-  become: yes
 
   tasks:
-    - name: Start etcd
+    - name: Ensure units directory
+      file:
+        path: ~/units
+        state: directory
+        owner: core
+        group: core
+
+    - name: Start services
+      become: yes
       service:
-        name: etcd.service
+        name: "{{ item }}.service"
         state: started
+      with_items:
+        - etcd
+        - fleet
 
 - name: Nginx
   hosts: "{{ env }}"
   gather_facts: no
 
   tasks:
-    - name: Download nginx
-      command: docker pull nginx
+    - name: Upload Nginx service unit
+      template:
+        src: templates/nginx.service.j2
+        dest: ~/units/nginx.service
+      register: nginx_unit
 
-    - name: Start nginx
-      docker:
-        docker_api_version: "1.20"
-        image: nginx
-        name: nginx
-        ports: "80:80"
-        state: running
+    - block:
+        - command: fleetctl stop ~/units/nginx.service
+          ignore_errors: yes
+
+        - command: fleetctl destroy ~/units/nginx.service
+          ignore_errors: yes
+
+        - command: fleetctl submit ~/units/nginx.service
+
+        - command: fleetctl start ~/units/nginx.service
+      when: nginx_unit|changed
