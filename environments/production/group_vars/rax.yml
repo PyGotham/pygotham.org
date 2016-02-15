@@ -1,5 +1,6 @@
 ---
 server:
+  count: 3
   flavor: performance1-2
   # CoreOS
   image: 8198f6de-db3f-4f48-9f0e-74a2c7749895

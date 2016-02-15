@@ -1,5 +1,5 @@
 [Unit]
-Description=Postgres
+Description=Web service listening on port %i
 After=docker.service
 Requires=docker.service
 
@@ -8,26 +8,22 @@ TimeoutStartSec=0
 Restart=always
 KillMode=none
 
-# Make sure the data directory exists.
-ExecStartPre=~/data/postgres
-
 # Stop and remove the old container.
 ExecStartPre=-/usr/bin/docker kill %p%i
 ExecStartPre=-/usr/bin/docker rm %p%i
 
 # Download the image.
-ExecStartPre=/usr/bin/docker pull postgres:9.5
+ExecStartPre=/usr/bin/docker pull quay.io/pygotham/pygotham
 
 # Start a container.
 ExecStart=/usr/bin/docker run \
     --name %p%i \
-    -e POSTGRES_USER=pygotham \
-    --volume ~/data/postgres:/var/lib/postgresql/data \
-    postgres:9.5
+    -e DATABASE_URL=postgres://pygotham@db/pygotham \
+    -e SECRET_KEY=abc123 \
+    -e SECURITY_PASSWORD_SALT=def456 \
+    -p ${COREOS_PUBLIC_IPV4}:%i:9000 \
+    --link postgres1:db \
+    quay.io/pygotham/pygotham
 
 # Stop and remove the cntainer.
 ExecStop=/usr/bin/docker stop %p%i
-
-[X-Fleet]
-# Don't schedule on the same machine as other Postgres instances.
-Conflicts=%p@%i.service

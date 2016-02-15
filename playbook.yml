@@ -75,6 +75,12 @@
         name: docker-py
         state: latest
 
+    - name: Write cloud-config
+      become: yes
+      template:
+        src: templates/cloud-config.yml.j2
+        dest: /usr/share/oem/cloud-config.yml
+
 - name: Configure access
   hosts: "{{ env }}"
   gather_facts: yes
@@ -125,23 +131,26 @@
 
     - block:
         - name: Stop Nginx
-          command: fleetctl stop ~/units/nginx@{{ item }}.service
+          run_once: yes
+          command: fleetctl stop ~/units/nginx@.service
           ignore_errors: yes
           with_sequence: count="{{ nginx.count|default(1) }}"
 
         - name: Remove Nginx units
-          command: fleetctl destroy ~/units/nginx@{{ item }}.service
+          run_once: yes
+          command: fleetctl destroy ~/units/nginx@.service
           ignore_errors: yes
           with_sequence: count="{{ nginx.count|default(1) }}"
 
         - name: Register Nginx units
-          command: fleetctl submit ~/units/nginx@{{ item }}.service
-          with_sequence: count="{{ nginx.count|default(1) }}"
+          run_once: yes
+          command: fleetctl submit ~/units/nginx@.service
 
         - name: Start Nginx
+          run_once: yes
           command: fleetctl start ~/units/nginx@{{ item }}.service
           with_sequence: count="{{ nginx.count|default(1) }}"
-      when: unit|changed
+      # when: unit|changed
 
 - name: Postgres
   hosts: "{{ env }}"
@@ -158,17 +167,61 @@
       register: unit
 
     - block:
-        - command: fleetctl stop ~/units/postgres@{{ item }}.service
+        - name: Stop Postgres
+          run_once: yes
+          command: fleetctl stop ~/units/postgres@.service
           ignore_errors: yes
           with_sequence: count="{{ postgres.count|default(1) }}"
 
-        - command: fleetctl destroy ~/units/postgres@{{ item }}.service
+        - name: Remove Postgres units
+          run_once: yes
+          command: fleetctl destroy ~/units/postgres@.service
           ignore_errors: yes
           with_sequence: count="{{ postgres.count|default(1) }}"
 
-        - command: fleetctl submit ~/units/postgres@{{ item }}.service
-          with_sequence: count="{{ postgres.count|default(1) }}"
+        - name: Register Postgres units
+          run_once: yes
+          command: fleetctl submit ~/units/postgres@.service
 
-        - command: fleetctl start ~/units/postgres@{{ item }}.service
+        - name: Start Postgres
+          run_once: yes
+          command: fleetctl start ~/units/postgres@{{ item }}.service
           with_sequence: count="{{ postgres.count|default(1) }}"
-      when: unit|changed
+      # when: unit|changed
+
+- name: Web
+  hosts: "{{ env }}"
+  gather_facts: no
+
+  vars_files:
+    - environments/{{ env }}/group_vars/services.yml
+
+  tasks:
+    - name: Upload web service unit
+      template:
+        src: templates/web@.service.j2
+        dest: ~/units/web@.service
+      register: unit
+
+    - block:
+        - name: Stop web
+          run_once: yes
+          command: fleetctl stop ~/units/web@.service
+          ignore_errors: yes
+          with_sequence: count="{{ web.count|default(1) }}" format=9%03d
+
+        - name: Remove web units
+          run_once: yes
+          command: fleetctl destroy ~/units/web@.service
+          ignore_errors: yes
+          with_sequence: count="{{ web.count|default(1) }}" format=9%03d
+
+        - name: Register web units
+          run_once: yes
+          command: fleetctl submit ~/units/web@.service
+
+        - name: Start web
+          run_once: yes
+          command: fleetctl start ~/units/web@{{ item }}.service
+          with_sequence: count="{{ web.count|default(1) }}" format=9%03d
+      # when: unit|changed

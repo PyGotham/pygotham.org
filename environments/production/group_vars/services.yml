@@ -3,3 +3,6 @@ nginx: {}
 
 postgres:
   user: pygotham
+
+web:
+  count: 3
