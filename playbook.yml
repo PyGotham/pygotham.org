@@ -16,51 +16,31 @@
         flavor: "{{ database.flavor }}"
         region: "{{ database.region|default('IAD') }}"
         group: "{{ database.group|default('database') }}"
-        key_name: dirn-macbook
+        key_name: "{{ database.key_name }}"
         count: "{{ database.count|default(1) }}"
         exact_count: yes
-        wait: yes
       register: database_servers
 
     - name: Register new database hosts
       add_host:
         hostname: "{{ item.name }}"
+        ansible_host: "{{ item.rax_accessipv4 }}"
         ansible_ssh_host: "{{ item.rax_accessipv4 }}"
-        ansible_ssh_user: root
-        group_name: "{{ database.group|default('database') }}"
-      with_items: database_servers.success
+        groups: "{{ database.group|default('database') }}"
+      with_items: "{{ database_servers.success }}"
       when: database_servers.action == 'create'
-
-    - name: Ensure web servers
-      rax:
-        wait: yes
-        name: "{{ web.name }}"
-        auto_increment: yes
-        image: "{{ web.image }}"
-        flavor: "{{ web.flavor }}"
-        region: "{{ web.region|default('IAD') }}"
-        group: "{{ web.group|default('web') }}"
-        key_name: dirn-macbook
-        count: "{{ web.count|default(1) }}"
-        exact_count: yes
-        wait: yes
-      register: web_servers
-
-    - name: Register new web hosts
-      add_host:
-        hostname: "{{ item.name }}"
-        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
-        ansible_ssh_user: root
-        group_name: "{{ web.group|default('web') }}"
-      with_items: web_servers.success
-      when: web_servers.action == 'create'
 
 - name: Configure access
   hosts: "{{ env }}"
   remote_user: root
   gather_facts: no
 
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+
   tasks:
+    # TODO: Fetch host keys
+
     - name: Ensure SSH keys
       authorized_key:
         user: root
@@ -68,6 +48,30 @@
       with_items:
         - dirn
         - jonafato
+
+- name: Secure servers
+  hosts: "{{ env }}"
+  remote_user: root
+
+  roles:
+    - role: hardening.os-hardening
+      os_ignore_users:
+        - postgres
+
+    - role: hardening.ssh-hardening
+      ssh_allow_root_with_key: true
+
+  tasks:
+    - name: Deny everything by default
+      ufw:
+        state: reloaded
+        policy: deny
+
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: 22
+        proto: tcp
 
 - name: Configure database servers
   hosts: "{{ database.group|default('database') }}"
@@ -79,9 +83,47 @@
 
   roles:
     - role: ANXS.postgresql
+      postgresql_version: 9.5
+      postgresql_default_auth_method: md5
+      postgresql_listen_addresses: '*'
+      postgresql_pg_hba_default:
+        - type: local
+          database: all
+          user: "{{ postgresql_admin_user }}"
+          address: ''
+          method: peer
+        - type: local
+          database: all
+          user: all
+          address: ''
+          method: peer
+        - type: host
+          database: all
+          user: all
+          address: 127.0.0.1/32
+          method: "{{ postgresql_default_auth_method }}"
+        - type: host
+          database: all
+          user: all
+          address: ::1/128
+          method: "{{ postgresql_default_auth_method }}"
+        - type: host
+          database: all
+          user: all
+          address: 0.0.0.0/0
+          method: "{{ postgresql_default_auth_method }}"
+        - type: host
+          database: all
+          user: all
+          address: ::0/0
+          method: "{{ postgresql_default_auth_method }}"
       postgresql_databases:
         - name: "{{ db_name }}"
           hstore: yes
+      postgresql_database_extensions:
+        - db: "{{ db_name }}"
+          extensions:
+            - hstore
       postgresql_users:
         - name: "{{ db_user }}"
           pass: "{{ db_pass }}"
@@ -91,3 +133,11 @@
           db: "{{ db_name }}"
           priv: ALL
           role_attr_flags: NOSUPERUSER,NOCREATEDB
+
+  tasks:
+    # TODO: Only allow in-network traffic
+    - name: Allow Postgres
+      ufw:
+        rule: allow
+        port: 5432
+        proto: tcp

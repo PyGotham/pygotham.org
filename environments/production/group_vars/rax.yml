@@ -1,9 +1,8 @@
 ---
-environment: prod
-
 database:
   flavor: io1-15
   image: Ubuntu 14.04 LTS (Trusty Tahr) (PVHVM)
+  key_name: dirn-macbook-pro
   name: database-
 
 web:

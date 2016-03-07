@@ -1,1 +1,3 @@
 ANXS.postgresql
+hardening.os-hardening
+hardening.ssh-hardening
