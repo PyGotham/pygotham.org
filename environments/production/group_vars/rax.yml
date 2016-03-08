@@ -5,6 +5,9 @@ database:
   key_name: dirn-macbook-pro
   name: database-
 
+load_balancer:
+  name: pygotham.org
+
 web:
   flavor: general1-4
   image: Ubuntu 14.04 LTS (Trusty Tahr) (PV)

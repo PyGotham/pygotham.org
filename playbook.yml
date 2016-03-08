@@ -30,6 +30,29 @@
       with_items: "{{ database_servers.success }}"
       when: database_servers.action == 'create'
 
+    - name: Ensure load balancer
+      rax_clb:
+        wait: yes
+        name: "{{ load_balancer.name }}"
+        port: "{{ load_balancer.port|default(80) }}"
+        protocol: "{{ load_balancer.protocol|default('HTTP') }}"
+        algorithm: "{{ load_balancer.algorithm|default('LEAST_CONNECTIONS') }}"
+        region: "{{ load_balancer.region|default('IAD') }}"
+        timeout: "{{ load_balancer.timeout|default(30) }}"
+        state: present
+
+    - name: Enable SSL termination
+      rax_clb_ssl:
+        wait: yes
+        loadbalancer: "{{ load_balancer.name }}"
+        private_key: "{{ lookup('file', 'environments/' + env + '/credentials/server.key') }}"
+        certificate: "{{ lookup('file', 'environments/' + env + '/credentials/server.crt') }}"
+        intermediate_traffic: "{{ lookup('file', 'environments/' + env + '/credentials/trust-chain.crt') }}"
+        secure_traffic_only: yes
+        https_redirect: yes
+        region: "{{ load_balancer.region|default('IAD') }}"
+        state: present
+
 - name: Configure access
   hosts: "{{ env }}"
   remote_user: root
