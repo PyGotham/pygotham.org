@@ -30,6 +30,29 @@
       with_items: "{{ database_servers.success }}"
       when: database_servers.action == 'create'
 
+    - name: Ensure web servers
+      rax:
+        wait: yes
+        name: "{{ web.name }}"
+        auto_increment: yes
+        image: "{{ web.image }}"
+        flavor: "{{ web.flavor }}"
+        region: "{{ web.region|default('IAD') }}"
+        group: "{{ web.group|default('database') }}"
+        key_name: "{{ web.key_name }}"
+        count: "{{ web.count|default(1) }}"
+        exact_count: yes
+      register: web_servers
+
+    - name: Register new web hosts
+      add_host:
+        hostname: "{{ item.name }}"
+        ansible_host: "{{ item.rax_accessipv4 }}"
+        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
+        groups: "{{ web.group|default('database') }}"
+      with_items: "{{ web_servers.success }}"
+      when: web_servers.action == 'create'
+
 - name: Configure access
   hosts: "{{ env }}"
   remote_user: root

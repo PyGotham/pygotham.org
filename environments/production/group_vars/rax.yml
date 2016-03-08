@@ -8,4 +8,5 @@ database:
 web:
   flavor: general1-4
   image: Ubuntu 14.04 LTS (Trusty Tahr) (PV)
+  key_name: dirn-macbook-pro
   name: web-
