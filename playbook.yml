@@ -169,6 +169,9 @@
   hosts: "{{ web.group|default('web') }}"
   remote_user: root
 
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+
   roles:
     - angstwad.docker_ubuntu
 
