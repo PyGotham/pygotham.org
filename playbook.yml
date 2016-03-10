@@ -170,7 +170,9 @@
   remote_user: root
 
   vars_files:
+    - environments/{{ env }}/group_vars/db.yml
     - environments/{{ env }}/group_vars/rax.yml
+    - environments/{{ env }}/group_vars/secrets.yml
 
   roles:
     - angstwad.docker_ubuntu
@@ -205,6 +207,7 @@
 
     - name: Start the letsencrypt companion container
       docker:
+        name: letsencrypt
         image: jrcs/letsencrypt-nginx-proxy-companion
         state: reloaded
         pull: always
@@ -215,3 +218,17 @@
           - nginx
         env:
           NGINX_DOCKER_GEN_CONTAINER: nginx-gen
+
+    - name: Start the PyGotham container
+      docker:
+        name: pygotham
+        image: quay.io/pygotham/pygotham
+        state: reloaded
+        pull: always
+        env:
+          DATABASE_URL: postgresql://{{ db_user }}:{{ db_pass }}@{{ hostvars[groups[database.group|default('database')][0]]['rax_addresses']['private'][0]['addr'] }}/{{ db_name }}
+          SECRET_KEY: "{{ SECRET_KEY }}"
+          SECURITY_PASSWORD_SALT: "{{ SECURITY_PASSWORD_SALT }}"
+          SENTRY_DSN: "{{ SENTRY_DSN }}"
+        ports:
+          - 9000:9000
