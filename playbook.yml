@@ -2,6 +2,7 @@
 - name: Deploy servers
   hosts: localhost
   gather_facts: no
+  tags: always
 
   vars_files:
     - environments/{{ env }}/group_vars/rax.yml
@@ -57,6 +58,7 @@
   hosts: "{{ env }}"
   remote_user: root
   gather_facts: no
+  tags: always
 
   vars_files:
     - environments/{{ env }}/group_vars/rax.yml
@@ -75,11 +77,12 @@
 - name: Secure servers
   hosts: "{{ env }}"
   remote_user: root
+  tags: secure
 
   roles:
-    - role: hardening.os-hardening
-      os_ignore_users:
-        - postgres
+    # - role: hardening.os-hardening
+    #   os_ignore_users:
+    #     - postgres
 
     - role: hardening.ssh-hardening
       ssh_allow_root_with_key: true
@@ -99,10 +102,11 @@
 - name: Configure database servers
   hosts: "{{ database.group|default('database') }}"
   remote_user: root
+  tags: database
 
   vars_files:
-    - environments/{{ env }}/group_vars/db.yml
     - environments/{{ env }}/group_vars/rax.yml
+    - environments/{{ env }}/group_vars/secrets.yml
 
   roles:
     - role: ANXS.postgresql
@@ -141,19 +145,19 @@
           address: ::0/0
           method: "{{ postgresql_default_auth_method }}"
       postgresql_databases:
-        - name: "{{ db_name }}"
+        - name: "{{ secrets.db.name }}"
           hstore: yes
       postgresql_database_extensions:
-        - db: "{{ db_name }}"
+        - db: "{{ secrets.db.name }}"
           extensions:
             - hstore
       postgresql_users:
-        - name: "{{ db_user }}"
-          pass: "{{ db_pass }}"
+        - name: "{{ secrets.db.user }}"
+          pass: "{{ secrets.db.pass }}"
           encrypted: no
       postgresql_user_privileges:
-        - name: "{{ db_user }}"
-          db: "{{ db_name }}"
+        - name: "{{ secrets.db.user }}"
+          db: "{{ secrets.db.name }}"
           priv: ALL
           role_attr_flags: NOSUPERUSER,NOCREATEDB
 
@@ -168,56 +172,61 @@
 - name: Configure web servers
   hosts: "{{ web.group|default('web') }}"
   remote_user: root
+  tags: web
 
   vars_files:
-    - environments/{{ env }}/group_vars/db.yml
     - environments/{{ env }}/group_vars/rax.yml
     - environments/{{ env }}/group_vars/secrets.yml
+    - environments/{{ env }}/group_vars/web.yml
 
   roles:
     - angstwad.docker_ubuntu
 
   tasks:
+    - name: Ensure vhost directory exists
+      file:
+        path: ~/nginx/vhost.d
+        state: directory
+
+    - name: Add the nginx vhost template
+      copy:
+        src: files/nginx/vhost
+        dest: ~/nginx/vhost.d/{{ web_domain }}
+
+    - name: Add the nginx vhost location template
+      copy:
+        src: files/nginx/vhost_location
+        dest: ~/nginx/vhost.d/{{ web_domain }}_location
+
     - name: Start the nginx container
       docker:
         name: nginx
-        image: nginx
+        # image: jwilder/nginx-proxy
+        image: quay.io/pygotham/nginx-proxy
         state: reloaded
         pull: always
         ports:
           - 80:80
           - 443:443
         volumes:
-          - /etc/nginx/conf.d
-          - /etc/nginx/vhost.d
-          - /usr/share/nginx/html
-          - /path/to/certs:/etc/nginx/certs:ro
-
-    - name: Start the docker-gen container
-      docker:
-        name: nginx-gen
-        image: jwilder/docker-gen
-        command: -notify-sighup nginx -watch -only-exposed -wait 5s:30s /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
-        state: reloaded
-        pull: always
-        volumes:
-          - /path/to/nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro
           - /var/run/docker.sock:/tmp/docker.sock:ro
-        volumes_from: nginx
+          - /root/nginx/certs:/etc/nginx/certs:ro
+          - /root/nginx/html:/usr/share/nginx/html
+          - /root/nginx/vhost.d:/etc/nginx/vhost.d
 
-    - name: Start the letsencrypt companion container
+    - name: Start the letsencrypt container
       docker:
         name: letsencrypt
         image: jrcs/letsencrypt-nginx-proxy-companion
         state: reloaded
         pull: always
+        env:
+          NGINX_DOCKER_GEN_CONTAINER: nginx
         volumes:
-          - /path/to/certs:/etc/nginx/certs:rw
+          - /root/nginx/certs:/etc/nginx/certs:rw
           - /var/run/docker.sock:/var/run/docker.sock:ro
         volumes_from:
           - nginx
-        env:
-          NGINX_DOCKER_GEN_CONTAINER: nginx-gen
 
     - name: Start the PyGotham container
       docker:
@@ -226,9 +235,14 @@
         state: reloaded
         pull: always
         env:
-          DATABASE_URL: postgresql://{{ db_user }}:{{ db_pass }}@{{ hostvars[groups[database.group|default('database')][0]]['rax_addresses']['private'][0]['addr'] }}/{{ db_name }}
-          SECRET_KEY: "{{ SECRET_KEY }}"
-          SECURITY_PASSWORD_SALT: "{{ SECURITY_PASSWORD_SALT }}"
-          SENTRY_DSN: "{{ SENTRY_DSN }}"
+          DATABASE_URL: postgresql://{{ secrets.db.user }}:{{ secrets.db.pass }}@{{ hostvars[groups[database.group|default('database')][0]]['rax_addresses']['private'][0]['addr'] }}/{{ secrets.db.name }}
+          DEBUG: True
+          LETSENCRYPT_EMAIL: webmaster@{{ web_domain }}
+          LETSENCRYPT_HOST: "{{ web_domain }}"
+          SECRET_KEY: "{{ secrets.web.SECRET_KEY }}"
+          SECURITY_PASSWORD_SALT: "{{ secrets.web.SECURITY_PASSWORD_SALT }}"
+          SENTRY_DSN: "{{ secrets.web.SENTRY_DSN }}"
+          VIRTUAL_HOST: "{{ web_domain }}"
+          VIRTUAL_PROTO: uwsgi
         ports:
-          - 9000:9000
+          - 9000
