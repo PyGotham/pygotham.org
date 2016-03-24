@@ -1,5 +1,8 @@
 ---
 - src: angstwad.docker_ubuntu
 - src: ANXS.postgresql
+- src: git@github.com:dirn/ansible-pg-wale.git
+  scm: git
+  name: pg-wale
 - src: hardening.os-hardening
 - src: hardening.ssh-hardening

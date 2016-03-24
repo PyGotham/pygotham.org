@@ -113,6 +113,9 @@
       postgresql_version: 9.5
       postgresql_default_auth_method: md5
       postgresql_listen_addresses: '*'
+      postgresql_wal_level: hot_standby
+      postgresql_wal_compression: on
+      postgresql_archive_mode: on
       postgresql_pg_hba_default:
         - type: local
           database: all
@@ -160,6 +163,13 @@
           db: "{{ secrets.db.name }}"
           priv: ALL
           role_attr_flags: NOSUPERUSER,NOCREATEDB
+
+    - role: pg-wale
+      pg_wale_access_key_id: "{{ secrets.s3.access_key_id }}"
+      pg_wale_secret_access_key: "{{ secrets.s3.secret_access_key }}"
+      pg_wale_s3_prefix: s3://{{ secrets.s3.bucket }}
+      pg_wale_pg_directory: /data/postgresql
+      pg_wale_config: /etc/postgresql/9.5/main/postgresql.conf
 
   tasks:
     # TODO: Only allow in-network traffic
