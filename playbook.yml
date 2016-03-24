@@ -191,12 +191,14 @@
     - name: Add the nginx vhost template
       copy:
         src: files/nginx/vhost
-        dest: ~/nginx/vhost.d/{{ web_domain }}
+        dest: ~/nginx/vhost.d/{{ item }}
+      with_items: "{{ web_domains }}"
 
     - name: Add the nginx vhost location template
       copy:
         src: files/nginx/vhost_location
-        dest: ~/nginx/vhost.d/{{ web_domain }}_location
+        dest: ~/nginx/vhost.d/{{ item }}_location
+      with_items: "{{ web_domains }}"
 
     - name: Start the nginx container
       docker:
@@ -237,12 +239,13 @@
         env:
           DATABASE_URL: postgresql://{{ secrets.db.user }}:{{ secrets.db.pass }}@{{ hostvars[groups[database.group|default('database')][0]]['rax_addresses']['private'][0]['addr'] }}/{{ secrets.db.name }}
           DEBUG: True
-          LETSENCRYPT_EMAIL: webmaster@{{ web_domain }}
-          LETSENCRYPT_HOST: "{{ web_domain }}"
+          LETSENCRYPT_EMAIL: webmaster@{{ item }}
+          LETSENCRYPT_HOST: "{{ item }}"
           SECRET_KEY: "{{ secrets.web.SECRET_KEY }}"
           SECURITY_PASSWORD_SALT: "{{ secrets.web.SECURITY_PASSWORD_SALT }}"
           SENTRY_DSN: "{{ secrets.web.SENTRY_DSN }}"
-          VIRTUAL_HOST: "{{ web_domain }}"
+          VIRTUAL_HOST: "{{ item }}"
           VIRTUAL_PROTO: uwsgi
         ports:
           - 9000
+      with_items: "{{ web_domains }}"

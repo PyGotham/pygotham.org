@@ -1,2 +1,3 @@
 ---
-web_domain: 2016.pygotham.org
+web_domains:
+  - 2016.pygotham.org
