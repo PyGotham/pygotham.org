@@ -1,7 +1,6 @@
 ---
 - name: Deploy servers
   hosts: localhost
-  gather_facts: no
   tags: always
 
   vars_files:
@@ -54,21 +53,58 @@
       with_items: "{{ web_servers.success }}"
       when: web_servers.action == 'create'
 
-- name: Configure access
+# When the servers are first created, the SSH key is associated with the root
+# user. The pygotham user needs to be created and given the necessary SSH keys.
+- name: Add remote user
   hosts: "{{ env }}"
   remote_user: root
-  gather_facts: no
-  tags: always
+  tags: initial
 
-  vars_files:
-    - environments/{{ env }}/group_vars/rax.yml
+  tasks:
+    - name: Generate a random password
+      shell: openssl rand -base64 32
+      register: passwd
+
+    - name: Add user
+      user:
+        name: pygotham
+        password: "{{ passwd.stdout }}"
+        state: present
+        shell: /bin/bash
+
+    - name: Ensure ssh keys
+      authorized_key:
+        user: pygotham
+        key: https://github.com/{{ item }}.keys
+      with_items:
+        - dirn
+        - jonafato
+
+    - name: Remove sudo group writes
+      lineinfile:
+        dest: /etc/sudoers
+        regex: ^%sudo
+        state: absent
+
+    - name: Add user to sudoers
+      lineinfile:
+        dest: /etc/sudoers
+        regexp: pygotham ALL
+        line: "pygotham ALL=(ALL) NOPASSWD: ALL"
+        state: present
+
+- name: Configure access
+  hosts: "{{ env }}"
+  tags: always
 
   tasks:
     # TODO: Fetch host keys
 
+    # Even though this is done in the previous play, the SSH keys are set again
+    # here to ensure that new SSH keys will be added.
     - name: Ensure SSH keys
       authorized_key:
-        user: root
+        user: pygotham
         key: https://github.com/{{ item }}.keys
       with_items:
         - dirn
@@ -76,16 +112,25 @@
 
 - name: Secure servers
   hosts: "{{ env }}"
-  remote_user: root
+  become: yes
   tags: secure
 
   roles:
-    # - role: hardening.os-hardening
-    #   os_ignore_users:
-    #     - postgres
+    - role: hardening.os-hardening
+      os_ignore_users:
+        - postgres
+        - pygotham
 
-    - role: hardening.ssh-hardening
-      ssh_allow_root_with_key: true
+    - hardening.ssh-hardening
+
+    - role: ANXS.fail2ban
+      fail2ban_services:
+        - name: ssh
+          enabled: yes
+          port: ssh
+          filter: sshd
+          logpath: /var/log/auth.log
+          maxretry: 5
 
   tasks:
     - name: Deny everything by default
@@ -101,7 +146,6 @@
 
 - name: Configure database servers
   hosts: "{{ database.group|default('database') }}"
-  remote_user: root
   tags: database
 
   vars_files:
@@ -110,6 +154,7 @@
 
   roles:
     - role: ANXS.postgresql
+      become: yes
       postgresql_version: 9.5
       postgresql_default_auth_method: md5
       postgresql_listen_addresses: '*'
@@ -174,6 +219,7 @@
   tasks:
     # TODO: Only allow in-network traffic
     - name: Allow Postgres
+      become: yes
       ufw:
         rule: allow
         port: 5432
@@ -181,7 +227,6 @@
 
 - name: Configure web servers
   hosts: "{{ web.group|default('web') }}"
-  remote_user: root
   tags: web
 
   vars_files:
@@ -190,24 +235,34 @@
     - environments/{{ env }}/group_vars/web.yml
 
   roles:
-    - angstwad.docker_ubuntu
+    - role: angstwad.docker_ubuntu
+      become: yes
+      docker_group_members:
+        - pygotham
 
   tasks:
-    - name: Ensure vhost directory exists
+    - name: Ensure nginx directories exists
+      become: yes
       file:
-        path: ~/nginx/vhost.d
+        path: /usr/local/etc/nginx/{{ item }}
+        owner: pygotham
+        group: pygotham
         state: directory
+      with_items:
+        - certs
+        - html
+        - vhost.d
 
-    - name: Add the nginx vhost template
-      copy:
-        src: files/nginx/vhost
-        dest: ~/nginx/vhost.d/{{ item }}
-      with_items: "{{ web_domains }}"
+    # - name: Add the nginx vhost template
+    #   copy:
+    #     src: files/nginx/vhost
+    #     dest: /usr/local/etc/nginx/vhost.d/{{ item }}
+    #   with_items: "{{ web_domains }}"
 
     - name: Add the nginx vhost location template
       copy:
         src: files/nginx/vhost_location
-        dest: ~/nginx/vhost.d/{{ item }}_location
+        dest: /usr/local/etc/nginx/vhost.d/{{ item }}_location
       with_items: "{{ web_domains }}"
 
     - name: Start the nginx container
@@ -222,9 +277,9 @@
           - 443:443
         volumes:
           - /var/run/docker.sock:/tmp/docker.sock:ro
-          - /root/nginx/certs:/etc/nginx/certs:ro
-          - /root/nginx/html:/usr/share/nginx/html
-          - /root/nginx/vhost.d:/etc/nginx/vhost.d
+          - /usr/local/etc/nginx/certs:/etc/nginx/certs:ro
+          - /usr/local/etc/nginx/html:/usr/share/nginx/html
+          - /usr/local/etc/nginx/vhost.d:/etc/nginx/vhost.d
 
     - name: Start the letsencrypt container
       docker:
@@ -235,7 +290,7 @@
         env:
           NGINX_DOCKER_GEN_CONTAINER: nginx
         volumes:
-          - /root/nginx/certs:/etc/nginx/certs:rw
+          - /home/pygotham/nginx/certs:/etc/nginx/certs:rw
           - /var/run/docker.sock:/var/run/docker.sock:ro
         volumes_from:
           - nginx
@@ -248,7 +303,6 @@
         pull: always
         env:
           DATABASE_URL: postgresql://{{ secrets.db.user }}:{{ secrets.db.pass }}@{{ hostvars[groups[database.group|default('database')][0]]['rax_addresses']['private'][0]['addr'] }}/{{ secrets.db.name }}
-          DEBUG: True
           LETSENCRYPT_EMAIL: webmaster@{{ item }}
           LETSENCRYPT_HOST: "{{ item }}"
           SECRET_KEY: "{{ secrets.web.SECRET_KEY }}"
