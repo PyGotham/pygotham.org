@@ -1,5 +1,6 @@
 ---
 - src: angstwad.docker_ubuntu
+- src: ANXS.fail2ban
 - src: ANXS.postgresql
 - src: git@github.com:dirn/ansible-pg-wale.git
   scm: git
