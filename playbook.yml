@@ -83,7 +83,7 @@
     - name: Remove sudo group writes
       lineinfile:
         dest: /etc/sudoers
-        regex: ^%sudo
+        regexp: ^%sudo
         state: absent
 
     - name: Add user to sudoers
@@ -161,6 +161,7 @@
       postgresql_wal_level: hot_standby
       postgresql_wal_compression: on
       postgresql_archive_mode: on
+      postgresql_archive_timeout: 60
       postgresql_pg_hba_default:
         - type: local
           database: all
@@ -213,7 +214,7 @@
       pg_wale_access_key_id: "{{ secrets.s3.access_key_id }}"
       pg_wale_secret_access_key: "{{ secrets.s3.secret_access_key }}"
       pg_wale_s3_prefix: s3://{{ secrets.s3.bucket }}
-      pg_wale_pg_directory: /data/postgresql
+      pg_wale_pg_directory: /var/lib/postgresql/9.5/main
       pg_wale_config: /etc/postgresql/9.5/main/postgresql.conf
 
   tasks:
