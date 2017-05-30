@@ -1,9 +1,9 @@
 ---
-- src: angstwad.docker_ubuntu
 - src: ANXS.fail2ban
-- src: ANXS.postgresql
-- src: git@github.com:dirn/ansible-pg-wale.git
-  scm: git
-  name: pg-wale
-- src: hardening.os-hardening
-- src: hardening.ssh-hardening
+  version: v1.0.1
+
+- src: dev-sec.os-hardening
+  version: 4.0.0
+
+- src: dev-sec.ssh-hardening
+  version: 4.1.1

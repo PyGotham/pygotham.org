@@ -7,29 +7,6 @@
     - environments/{{ env }}/group_vars/rax.yml
 
   tasks:
-    - name: Ensure database servers
-      rax:
-        wait: yes
-        name: "{{ database.name }}"
-        auto_increment: yes
-        image: "{{ database.image }}"
-        flavor: "{{ database.flavor }}"
-        region: "{{ database.region|default('IAD') }}"
-        group: "{{ database.group|default('database') }}"
-        key_name: "{{ database.key_name }}"
-        count: "{{ database.count|default(1) }}"
-        exact_count: yes
-      register: database_servers
-
-    - name: Register new database hosts
-      add_host:
-        hostname: "{{ item.name }}"
-        ansible_host: "{{ item.rax_accessipv4 }}"
-        ansible_ssh_host: "{{ item.rax_accessipv4 }}"
-        groups: "{{ database.group|default('database') }}"
-      with_items: "{{ database_servers.success }}"
-      when: database_servers.action == 'create'
-
     - name: Ensure web servers
       rax:
         wait: yes
@@ -49,16 +26,20 @@
         hostname: "{{ item.name }}"
         ansible_host: "{{ item.rax_accessipv4 }}"
         ansible_ssh_host: "{{ item.rax_accessipv4 }}"
-        groups: "{{ web.group|default('database') }}"
+        groups: "{{ web.group|default('web') }}"
       with_items: "{{ web_servers.success }}"
       when: web_servers.action == 'create'
 
 # When the servers are first created, the SSH key is associated with the root
 # user. The pygotham user needs to be created and given the necessary SSH keys.
 - name: Add remote user
-  hosts: "{{ env }}"
-  remote_user: root
+  hosts: "{{ web.group|default('web') }}"
+  vars:
+    ansible_user: root
   tags: initial
+
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
 
   tasks:
     - name: Generate a random password
@@ -94,8 +75,11 @@
         state: present
 
 - name: Configure access
-  hosts: "{{ env }}"
+  hosts: "{{ web.group|default('web') }}"
   tags: always
+
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
 
   tasks:
     # TODO: Fetch host keys
@@ -111,17 +95,20 @@
         - jonafato
 
 - name: Secure servers
-  hosts: "{{ env }}"
+  # hosts: "{{ env }}"
+  hosts: "{{ web.group|default('web') }}"
   become: yes
   tags: secure
 
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+
   roles:
-    - role: hardening.os-hardening
+    - role: dev-sec.os-hardening
       os_ignore_users:
-        - postgres
         - pygotham
 
-    - hardening.ssh-hardening
+    # - dev-sec.ssh-hardening
 
     - role: ANXS.fail2ban
       fail2ban_services:
@@ -144,173 +131,132 @@
         port: 22
         proto: tcp
 
-- name: Configure database servers
-  hosts: "{{ database.group|default('database') }}"
-  tags: database
-
-  vars_files:
-    - environments/{{ env }}/group_vars/rax.yml
-    - environments/{{ env }}/group_vars/secrets.yml
-
-  roles:
-    - role: ANXS.postgresql
-      become: yes
-      postgresql_version: 9.5
-      postgresql_default_auth_method: md5
-      postgresql_listen_addresses: '*'
-      postgresql_wal_level: hot_standby
-      postgresql_wal_compression: on
-      postgresql_archive_mode: on
-      postgresql_archive_timeout: 60
-      postgresql_pg_hba_default:
-        - type: local
-          database: all
-          user: "{{ postgresql_admin_user }}"
-          address: ''
-          method: peer
-        - type: local
-          database: all
-          user: all
-          address: ''
-          method: peer
-        - type: host
-          database: all
-          user: all
-          address: 127.0.0.1/32
-          method: "{{ postgresql_default_auth_method }}"
-        - type: host
-          database: all
-          user: all
-          address: ::1/128
-          method: "{{ postgresql_default_auth_method }}"
-        - type: host
-          database: all
-          user: all
-          address: 0.0.0.0/0
-          method: "{{ postgresql_default_auth_method }}"
-        - type: host
-          database: all
-          user: all
-          address: ::0/0
-          method: "{{ postgresql_default_auth_method }}"
-      postgresql_databases:
-        - name: "{{ secrets.db.name }}"
-          hstore: yes
-      postgresql_database_extensions:
-        - db: "{{ secrets.db.name }}"
-          extensions:
-            - hstore
-      postgresql_users:
-        - name: "{{ secrets.db.user }}"
-          pass: "{{ secrets.db.pass }}"
-          encrypted: no
-      postgresql_user_privileges:
-        - name: "{{ secrets.db.user }}"
-          db: "{{ secrets.db.name }}"
-          priv: ALL
-          role_attr_flags: NOSUPERUSER,NOCREATEDB
-
-    - role: pg-wale
-      pg_wale_access_key_id: "{{ secrets.s3.access_key_id }}"
-      pg_wale_secret_access_key: "{{ secrets.s3.secret_access_key }}"
-      pg_wale_s3_prefix: s3://{{ secrets.s3.bucket }}
-      pg_wale_pg_directory: /var/lib/postgresql/9.5/main
-      pg_wale_config: /etc/postgresql/9.5/main/postgresql.conf
-
-  tasks:
-    # TODO: Only allow in-network traffic
-    - name: Allow Postgres
-      become: yes
-      ufw:
-        rule: allow
-        port: 5432
-        proto: tcp
-
 - name: Configure web servers
   hosts: "{{ web.group|default('web') }}"
   tags: web
 
   vars_files:
     - environments/{{ env }}/group_vars/rax.yml
-    - environments/{{ env }}/group_vars/secrets.yml
     - environments/{{ env }}/group_vars/web.yml
 
-  roles:
-    - role: angstwad.docker_ubuntu
+  tasks:
+    - name: Ensure apt repositories
+      apt_repository:
+        repo: "{{ item }}"
+      with_items: "{{ apt.repositories }}"
       become: yes
-      docker_group_members:
-        - pygotham
+
+    - name: Update apt
+      apt:
+        update_cache: yes
+      become: yes
+
+    - name: Ensure software
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items: "{{ apt.packages }}"
+      become: yes
+
+
+- name: Fetch website sources
+  hosts: "{{ web.group|default('web') }}"
+  tags: web
+  gather_facts: yes
+
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+    - environments/{{ env }}/group_vars/web.yml
 
   tasks:
-    - name: Ensure nginx directories exists
-      become: yes
+    - name: Ensure site source dir
       file:
-        path: /usr/local/etc/nginx/{{ item }}
-        owner: pygotham
-        group: pygotham
+        path: /home/pygotham/pygotham.org
+        state: directory
+
+    - name: Ensure html sources
+      git:
+        repo: "{{ item.src }}"
+        dest: /home/pygotham/pygotham.org/{{ item.domain }}
+        accept_hostkey: yes
+      with_items: "{{ web_domains|selectattr('type', 'equalto', 'html')|list }}"
+
+    - name: Ensure jekyll sources
+      git:
+        repo: "{{ item.src }}"
+        dest: /tmp/{{ item.domain }}
+        accept_hostkey: yes
+      with_items: "{{ web_domains|selectattr('type', 'equalto', 'jekyll')|list }}"
+      tags: jekyll
+
+    - name: Ensure bundler
+      command: gem install bundler
+      become: yes
+      tags: jekyll
+
+    - name: Ensure jekyll requirements
+      bundler:
+        chdir: /tmp/{{ item.domain }}
+        state: present
+      with_items: "{{ web_domains|selectattr('type', 'equalto', 'jekyll')|list }}"
+      become: yes
+      tags: jekyll
+
+    - name: Build jekyll artifacts
+      command: bundle exec jekyll build --destination /home/pygotham/pygotham.org/{{ item.domain }}
+      args:
+        chdir: /tmp/{{ item.domain }}
+      with_items: "{{ web_domains|selectattr('type', 'equalto', 'jekyll')|list }}"
+      become: yes
+      tags: jekyll
+
+
+- name: Configure nginx
+  hosts: "{{ web.group|default('web') }}"
+  tags: web
+
+  vars_files:
+    - environments/{{ env }}/group_vars/rax.yml
+    - environments/{{ env }}/group_vars/web.yml
+
+  tasks:
+    - name: Ensure nginx config directories
+      file:
+        path: /etc/nginx/sites-{{ item }}
         state: directory
       with_items:
-        - certs
-        - html
-        - vhost.d
+        - available
+        - enabled
+      become: yes
 
-    # - name: Add the nginx vhost template
-    #   copy:
-    #     src: files/nginx/vhost
-    #     dest: /usr/local/etc/nginx/vhost.d/{{ item }}
-    #   with_items: "{{ web_domains }}"
+    - name: Ensure nginx config
+      template:
+        src: files/nginx/pygotham.org.conf.j2
+        dest: /etc/nginx/sites-available/pygotham.org.conf
+      vars:
+        domains: "{{ web_domains }}"
+      become: yes
 
-    - name: Add the nginx vhost location template
-      copy:
-        src: files/nginx/vhost_location
-        dest: /usr/local/etc/nginx/vhost.d/{{ item }}_location
-      with_items: "{{ web_domains }}"
+    - name: Link nginx config
+      file:
+        src: /etc/nginx/sites-available/pygotham.org.conf
+        dest: /etc/nginx/sites-enabled/pygotham.org.conf
+        state: link
+      become: yes
 
-    - name: Start the nginx container
-      docker:
-        name: nginx
-        # image: jwilder/nginx-proxy
-        image: quay.io/pygotham/nginx-proxy
-        state: reloaded
-        pull: always
-        ports:
-          - 80:80
-          - 443:443
-        volumes:
-          - /var/run/docker.sock:/tmp/docker.sock:ro
-          - /usr/local/etc/nginx/certs:/etc/nginx/certs:ro
-          - /usr/local/etc/nginx/html:/usr/share/nginx/html
-          - /usr/local/etc/nginx/vhost.d:/etc/nginx/vhost.d
+    - name: Ensure letsencrypt challenge directory
+      file:
+        path: /srv/letsencrypt-auto
+        state: directory
+      become: yes
+      tags: certbot
 
-    - name: Start the letsencrypt container
-      docker:
-        name: letsencrypt
-        image: jrcs/letsencrypt-nginx-proxy-companion
-        state: reloaded
-        pull: always
-        env:
-          NGINX_DOCKER_GEN_CONTAINER: nginx
-        volumes:
-          - /home/pygotham/nginx/certs:/etc/nginx/certs:rw
-          - /var/run/docker.sock:/var/run/docker.sock:ro
-        volumes_from:
-          - nginx
-
-    - name: Start the PyGotham container
-      docker:
-        name: pygotham
-        image: quay.io/pygotham/pygotham
-        state: reloaded
-        pull: always
-        env:
-          DATABASE_URL: postgresql://{{ secrets.db.user }}:{{ secrets.db.pass }}@{{ hostvars[groups[database.group|default('database')][0]]['rax_addresses']['private'][0]['addr'] }}/{{ secrets.db.name }}
-          LETSENCRYPT_EMAIL: webmaster@{{ item }}
-          LETSENCRYPT_HOST: "{{ item }}"
-          SECRET_KEY: "{{ secrets.web.SECRET_KEY }}"
-          SECURITY_PASSWORD_SALT: "{{ secrets.web.SECURITY_PASSWORD_SALT }}"
-          SENTRY_DSN: "{{ secrets.web.SENTRY_DSN }}"
-          VIRTUAL_HOST: "{{ item }}"
-          VIRTUAL_PROTO: uwsgi
-        ports:
-          - 9000
-      with_items: "{{ web_domains }}"
+    - name: Certbot first run
+      args:
+        creates: /etc/letsencrypt/live/pygotham.org
+      become: yes
+      tags: certbot
+      command: >
+        certbot certonly --non-interactive --agree-tos --webroot
+        --webroot-path /srv/letsencrypt-auto/ --post-hook "service nginx reload" --email jon@pygotham.org
+        -d pygotham.org -d www.pygotham.org -d {{ web_domains|map(attribute='domain')|join(' -d ') }}
