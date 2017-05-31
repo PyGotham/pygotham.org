@@ -1,31 +1,34 @@
 ---
 web_domains:
-  - domain: 2017.pygotham.org
-    src: https://gitlab.com/pygotham/2017.git
-    type: jekyll
+  domain: dev.pygotham.org
+  subdomains:
+    - domain: 2017
+      src: https://gitlab.com/pygotham/2017.git
+      type: jekyll
 
-  - domain: 2016.pygotham.org
-    src: https://gitlab.com/pygotham/2016.git
-    type: html
+    - domain: 2016
+      src: https://gitlab.com/pygotham/2016.git
+      type: html
 
-  - domain: 2015.pygotham.org
-    src: https://gitlab.com/pygotham/2015.git
-    type: html
-  
-  - domain: 2014.pygotham.org
-    src: https://gitlab.com/pygotham/2014.git
-    type: html
+    - domain: 2015
+      src: https://gitlab.com/pygotham/2015.git
+      type: html
+
+    - domain: 2014
+      src: https://gitlab.com/pygotham/2014.git
+      type: html
 
 apt:
   repositories:
-    # For up-to-date ruby
     - ppa:brightbox/ruby-ng
     - ppa:certbot/certbot
+    - ppa:nginx/stable
 
   packages:
     - build-essential
     - git
     - libffi-dev
+    - nginx
     - python-certbot-nginx
     - ruby2.4
     - ruby2.4-dev

@@ -154,7 +154,7 @@
     - name: Ensure software
       apt:
         name: "{{ item }}"
-        state: present
+        state: latest
       with_items: "{{ apt.packages }}"
       become: yes
 
@@ -177,16 +177,17 @@
     - name: Ensure html sources
       git:
         repo: "{{ item.src }}"
-        dest: /home/pygotham/pygotham.org/{{ item.domain }}
+        dest: /home/pygotham/pygotham.org/{{ item.domain }}.{{ web_domains.domain }}
+        force: yes
         accept_hostkey: yes
-      with_items: "{{ web_domains|selectattr('type', 'equalto', 'html')|list }}"
+      with_items: "{{ web_domains.subdomains|selectattr('type', 'equalto', 'html')|list }}"
 
     - name: Ensure jekyll sources
       git:
         repo: "{{ item.src }}"
-        dest: /tmp/{{ item.domain }}
+        dest: /tmp/{{ item.domain }}.{{ web_domains.domain }}
         accept_hostkey: yes
-      with_items: "{{ web_domains|selectattr('type', 'equalto', 'jekyll')|list }}"
+      with_items: "{{ web_domains.subdomains|selectattr('type', 'equalto', 'jekyll')|list }}"
       tags: jekyll
 
     - name: Ensure bundler
@@ -196,67 +197,82 @@
 
     - name: Ensure jekyll requirements
       bundler:
-        chdir: /tmp/{{ item.domain }}
+        chdir: /tmp/{{ item.domain }}.{{ web_domains.domain }}
         state: present
-      with_items: "{{ web_domains|selectattr('type', 'equalto', 'jekyll')|list }}"
+      with_items: "{{ web_domains.subdomains|selectattr('type', 'equalto', 'jekyll')|list }}"
       become: yes
       tags: jekyll
 
     - name: Build jekyll artifacts
-      command: bundle exec jekyll build --destination /home/pygotham/pygotham.org/{{ item.domain }}
+      command: bundle exec jekyll build --destination /home/pygotham/pygotham.org/{{ item.domain }}.{{ web_domains.domain }}
       args:
-        chdir: /tmp/{{ item.domain }}
-      with_items: "{{ web_domains|selectattr('type', 'equalto', 'jekyll')|list }}"
+        chdir: /tmp/{{ item.domain }}.{{ web_domains.domain }}
+      with_items: "{{ web_domains.subdomains|selectattr('type', 'equalto', 'jekyll')|list }}"
       become: yes
       tags: jekyll
+
+    - name: Ensure proper file permissions
+      file:
+        path: /home/pygotham/pygotham.org/{{ item.domain }}.{{ web_domains.domain }}
+        owner: pygotham
+        group: pygotham
+        mode: 0755
+        recurse: yes
+      with_items: "{{ web_domains.subdomains }}"
+      become: yes
 
 
 - name: Configure nginx
   hosts: "{{ web.group|default('web') }}"
   tags: web
+  become: yes
 
   vars_files:
     - environments/{{ env }}/group_vars/rax.yml
     - environments/{{ env }}/group_vars/web.yml
 
   tasks:
-    - name: Ensure nginx config directories
+    - name: Remove default nginx config
       file:
-        path: /etc/nginx/sites-{{ item }}
-        state: directory
-      with_items:
-        - available
-        - enabled
-      become: yes
+        path: /etc/nginx/sites-enabled/default
+        state: absent
 
     - name: Ensure nginx config
       template:
         src: files/nginx/pygotham.org.conf.j2
         dest: /etc/nginx/sites-available/pygotham.org.conf
       vars:
-        domains: "{{ web_domains }}"
-      become: yes
+        subdomains: "{{ web_domains.subdomains|map(attribute='domain')|list }}"
+        domain: "{{ web_domains.domain }}"
+      notify: Reload nginx
 
     - name: Link nginx config
       file:
         src: /etc/nginx/sites-available/pygotham.org.conf
         dest: /etc/nginx/sites-enabled/pygotham.org.conf
         state: link
-      become: yes
 
     - name: Ensure letsencrypt challenge directory
       file:
         path: /srv/letsencrypt-auto
+        owner: www-data
+        group: www-data
         state: directory
-      become: yes
+        recurse: yes
       tags: certbot
 
     - name: Certbot first run
       args:
         creates: /etc/letsencrypt/live/pygotham.org
-      become: yes
       tags: certbot
       command: >
-        certbot certonly --non-interactive --agree-tos --webroot
+        certbot certonly --non-interactive --agree-tos --webroot --staging
         --webroot-path /srv/letsencrypt-auto/ --post-hook "service nginx reload" --email jon@pygotham.org
-        -d pygotham.org -d www.pygotham.org -d {{ web_domains|map(attribute='domain')|join(' -d ') }}
+        -d {{ web_domains.domain }} -d www.{{ web_domains.domain }}
+        {% for subdomain in web_domains.subdomains|map(attribute='domain')|list %} -d {{ subdomain }}.{{ web_domains.domain }}{% endfor %}
+
+  handlers:
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
