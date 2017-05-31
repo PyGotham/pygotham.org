@@ -1,0 +1,21 @@
+# Always redirect HTTP to HTTPS.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    # Many of these domains don't point to anything yet. They exist here to allow letsencrypt
+    # to generate certificates and respond to challenges. In the future, these domains will be
+    # used to serve the PyGotham archives and "coming soon" splash pages.
+    server_name {{ domain }} www.{{ domain }} {% for subdomain in subdomains %}{{ subdomain }}.{{ domain }} {% endfor %};
+
+    # Serve the letsencrypt challenge.
+    location '/.well-known/acme-challenge/' {
+        default_type 'text/plain';
+        root /srv/letsencrypt-auto/;
+    }
+
+    # Redirect everything else.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

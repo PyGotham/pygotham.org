@@ -1,25 +1,3 @@
-# Always redirect HTTP to HTTPS.
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-
-    # Many of these domains don't point to anything yet. They exist here to allow letsencrypt
-    # to generate certificates and respond to challenges. In the future, these domains will be
-    # used to serve the PyGotham archives and "coming soon" splash pages.
-    server_name {{ domain }} www.{{ domain }} {% for subdomain in subdomains %}{{ subdomain }}.{{ domain }} {% endfor %};
-
-    # Serve the letsencrypt challenge.
-    location '/.well-known/acme-challenge/' {
-        default_type 'text/plain';
-        root /srv/letsencrypt-auto/;
-    }
-
-    # Redirect everything else.
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
 # Redirect the zone apex to the current year. Do this "temporarily" since it
 # will switch from year to year.
 server {
@@ -27,11 +5,11 @@ server {
     # Last generated on 2017-05-28
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name pygotham.org www.pygotham.org;
+    server_name {{ domain }} www.{{ domain }};
     return 302 https://{{ subdomains|first }}.{{ domain }};
 
-    ssl_certificate /etc/letsencrypt/live/pygotham.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/pygotham.org/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/{{ domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ domain }}/privkey.pem;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:50m;
     ssl_session_tickets off;
@@ -52,8 +30,8 @@ server {
     listen [::]:443 ssl http2;
     server_name {% for subdomain in subdomains %}{{ subdomain }}.{{ domain }} {% endfor %};
 
-    ssl_certificate /etc/letsencrypt/live/pygotham.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/pygotham.org/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/{{ domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ domain }}/privkey.pem;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:50m;
     ssl_session_tickets off;

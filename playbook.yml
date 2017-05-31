@@ -178,9 +178,10 @@
       git:
         repo: "{{ item.src }}"
         dest: /home/pygotham/pygotham.org/{{ item.domain }}.{{ web_domains.domain }}
-        force: yes
         accept_hostkey: yes
+        force: yes
       with_items: "{{ web_domains.subdomains|selectattr('type', 'equalto', 'html')|list }}"
+      become: yes
 
     - name: Ensure jekyll sources
       git:
@@ -213,12 +214,12 @@
 
     - name: Ensure proper file permissions
       file:
-        path: /home/pygotham/pygotham.org/{{ item.domain }}.{{ web_domains.domain }}
-        owner: pygotham
-        group: pygotham
+        path: /home/pygotham/pygotham.org  # /{{ item.domain }}.{{ web_domains.domain }}
+        owner: www-data
+        group: www-data
         mode: 0755
         recurse: yes
-      with_items: "{{ web_domains.subdomains }}"
+      # with_items: "{{ web_domains.subdomains }}"
       become: yes
 
 
@@ -232,25 +233,43 @@
     - environments/{{ env }}/group_vars/web.yml
 
   tasks:
-    - name: Remove default nginx config
-      file:
-        path: /etc/nginx/sites-enabled/default
-        state: absent
-
-    - name: Ensure nginx config
+    - name: Write default nginx config
       template:
-        src: files/nginx/pygotham.org.conf.j2
-        dest: /etc/nginx/sites-available/pygotham.org.conf
+        src: files/nginx/default
+        dest: /etc/nginx/sites-available/default
+        owner: www-data
+        group: www-data
       vars:
         subdomains: "{{ web_domains.subdomains|map(attribute='domain')|list }}"
         domain: "{{ web_domains.domain }}"
+
+    - name: Link default nginx config
+      file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+        owner: www-data
+        group: www-data
       notify: Reload nginx
+
+    - name: Write full nginx config
+      template:
+        src: files/nginx/pygotham.org.conf.j2
+        dest: /etc/nginx/sites-available/{{ web_domains.domain }}.conf
+        owner: www-data
+        group: www-data
+      vars:
+        subdomains: "{{ web_domains.subdomains|map(attribute='domain')|list }}"
+        domain: "{{ web_domains.domain }}"
 
     - name: Link nginx config
       file:
-        src: /etc/nginx/sites-available/pygotham.org.conf
-        dest: /etc/nginx/sites-enabled/pygotham.org.conf
+        src: /etc/nginx/sites-available/{{ web_domains.domain }}.conf
+        dest: /etc/nginx/sites-enabled/{{ web_domains.domain }}.conf
         state: link
+        owner: www-data
+        group: www-data
+      notify: Reload nginx
 
     - name: Ensure letsencrypt challenge directory
       file:
@@ -263,10 +282,10 @@
 
     - name: Certbot first run
       args:
-        creates: /etc/letsencrypt/live/pygotham.org
+        creates: /etc/letsencrypt/live/{{ web_domains.domain }}.conf
       tags: certbot
       command: >
-        certbot certonly --non-interactive --agree-tos --webroot --staging
+        certbot certonly --non-interactive --agree-tos --webroot
         --webroot-path /srv/letsencrypt-auto/ --post-hook "service nginx reload" --email jon@pygotham.org
         -d {{ web_domains.domain }} -d www.{{ web_domains.domain }}
         {% for subdomain in web_domains.subdomains|map(attribute='domain')|list %} -d {{ subdomain }}.{{ web_domains.domain }}{% endfor %}
