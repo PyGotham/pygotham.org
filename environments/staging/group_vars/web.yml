@@ -1,6 +1,6 @@
 ---
 web_domains:
-  domain: pygotham.org
+  domain: dev.pygotham.org
   subdomains:
     - domain: 2017
       src: https://gitlab.com/pygotham/2017.git
