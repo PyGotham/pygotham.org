@@ -252,25 +252,6 @@
         group: www-data
       notify: Reload nginx
 
-    - name: Write full nginx config
-      template:
-        src: files/nginx/pygotham.org.conf.j2
-        dest: /etc/nginx/sites-available/{{ web_domains.domain }}.conf
-        owner: www-data
-        group: www-data
-      vars:
-        subdomains: "{{ web_domains.subdomains|map(attribute='domain')|list }}"
-        domain: "{{ web_domains.domain }}"
-
-    - name: Link nginx config
-      file:
-        src: /etc/nginx/sites-available/{{ web_domains.domain }}.conf
-        dest: /etc/nginx/sites-enabled/{{ web_domains.domain }}.conf
-        state: link
-        owner: www-data
-        group: www-data
-      notify: Reload nginx
-
     - name: Ensure letsencrypt challenge directory
       file:
         path: /srv/letsencrypt-auto
@@ -289,6 +270,25 @@
         --webroot-path /srv/letsencrypt-auto/ --post-hook "service nginx reload" --email jon@pygotham.org
         -d {{ web_domains.domain }} -d www.{{ web_domains.domain }}
         {% for subdomain in web_domains.subdomains|map(attribute='domain')|list %} -d {{ subdomain }}.{{ web_domains.domain }}{% endfor %}
+
+    - name: Write full nginx config
+      template:
+        src: files/nginx/pygotham.org.conf.j2
+        dest: /etc/nginx/sites-available/{{ web_domains.domain }}.conf
+        owner: www-data
+        group: www-data
+      vars:
+        subdomains: "{{ web_domains.subdomains|map(attribute='domain')|list }}"
+        domain: "{{ web_domains.domain }}"
+
+    - name: Link nginx config
+      file:
+        src: /etc/nginx/sites-available/{{ web_domains.domain }}.conf
+        dest: /etc/nginx/sites-enabled/{{ web_domains.domain }}.conf
+        state: link
+        owner: www-data
+        group: www-data
+      notify: Reload nginx
 
   handlers:
     - name: Reload nginx
