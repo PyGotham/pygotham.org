@@ -18,6 +18,10 @@ web_domains:
       src: https://gitlab.com/pygotham/2014.git
       type: html
 
+    - domain: countdown
+      src: https://gitlab.com/pygotham/countdown.git
+      type: html
+
 apt:
   repositories:
     - ppa:brightbox/ruby-ng

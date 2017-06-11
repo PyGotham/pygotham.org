@@ -265,8 +265,9 @@
       args:
         creates: /etc/letsencrypt/live/{{ web_domains.domain }}.conf
       tags: certbot
+      notify: Reload nginx
       command: >
-        certbot certonly --non-interactive --agree-tos --webroot
+        certbot certonly --non-interactive --agree-tos --webroot --expand
         --webroot-path /srv/letsencrypt-auto/ --post-hook "service nginx reload" --email jon@pygotham.org
         -d {{ web_domains.domain }} -d www.{{ web_domains.domain }}
         {% for subdomain in web_domains.subdomains|map(attribute='domain')|list %} -d {{ subdomain }}.{{ web_domains.domain }}{% endfor %}
